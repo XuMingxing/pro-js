@@ -2,9 +2,12 @@
 #!/usr/bin/env Python
 #-----------1.0.0.002----------#
 from __future__ import print_function
-from collections import OrderedDict
+from __future__ import with_statement
+from collections import OrderedDict 
+import ConfigParser 
 import os
-
+import sample1
+config=ConfigParser.ConfigParser()
 #获取loadavg值大小
 def load_stat():
     loadavg={}
@@ -22,9 +25,9 @@ def load_stat():
     return loadavg
 
 #获取进程statm内存情况
-def pro_statm():
+def pro_statm(pid):
     statm={}
-    g=open("/proc/1/statm")
+    g=open("/proc/"+str(pid)+"/statm")
     con=g.read().split()
     g.close()
     statm['size']=con[0]
@@ -51,22 +54,58 @@ def meminfo():
     f=open('/proc/meminfo')
     con=f.read().split()
     f.close()
-    memfree=con[4].strip()
+    memfree=con[16].strip()
     return memfree
 
 #前端打印状态
-print("剩余物理内存(Kb):",meminfo())
-print("正在运行的进程数:", load_stat()['nr_u'])
-print("总进程数:",load_stat()['nr_d'])
-print("硬盘占用率(%):", per_size())
-print("Resident:",pro_statm()['resident'])
+print(meminfo(),load_stat()['lavg_15'], per_size(),pro_statm(1)['resident'])
 
+#新建计数文件
+try :
+    count1=config.getint("count","count1")
+except ConfigParser.NoSectionError,e:
+    js=open('js.conf','w')
+    js.write("[count]")
+    js.write("count1=0")
+    js.write("count2=0")
+    js.write("count3=0")
+    js.close()
+#读取配置文件
+config.read("js.cfg")
+Corenum=config.getint("option","Corenum")
+Hardcapmax=config.getint("option","Hardcapmax")
+Residentavg=config.getint("option","Residentavg")
 #报警逻辑
-if int(load_stat()['nr_u'])>4:
-    print("warning:系统进程数超标")
-if int(meminfo()) <= 189104:
-    print("warning:剩余内存过低")
-if int(per_size())>=90:
-    print("warning:硬盘内存即将耗尽")
-if int(pro_statm()['resident'])>=1000:
-    print("warning:程序占用内存异常")
+config.read("js.conf")
+if float(load_stat()['lavg_15'])>Corenum :
+    count1=config.getint("count","count1")+1 
+    config.set("count","count1",str(count1))
+    config.write(open("js.conf","w"))
+    if count1>=3:
+        sample1.send_msg("进程","数量","超标")
+else : 
+    config.set("count","count1","0")
+    config.write(open("js.conf","w"))
+ 
+if int(meminfo()) != 0:
+    count2=config.getint("count","count2")+1
+    config.set("count","count2",str(count2))
+    config.write(open("js.conf","w"))
+    if count2>=3:
+        sample1.send_msg("内存","负荷","过大")
+else :
+    config.set("count","count2","0")
+    config.write(open("js.conf","w"))
+
+if int(per_size())>=Hardcapmax:
+    sample1.send_msg("硬盘","容量","不足")
+
+if int(pro_statm(1)['resident'])>=Residentavg:
+    count4=config.getint("count","count3")+1
+    config.set("count","count3",str(count3))
+    config.write(open("js.conf","w"))
+    if count3>=3:
+        sample1.send_msg("进程","resident","泄漏")
+else :
+    config.set("count","count3","0")
+    config.write(open("js.conf","w"))
